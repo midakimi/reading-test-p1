@@ -94,6 +94,14 @@ p.note{color:var(--muted);font-size:.88rem;margin:6px 0}
 .grp{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)}
 .grp:last-child{border:0}
 .grp b{min-width:0}
+.heard{margin-top:12px;border:1px solid var(--line);border-left-width:6px;border-radius:12px;padding:8px 12px;background:var(--surface2)}
+.heard[data-state=ok]{border-left-color:var(--ok)}
+.heard[data-state=bad]{border-left-color:var(--near)}
+.heard[data-state=live]{border-left-color:var(--live)}
+.heard .hl{font-size:.78rem;color:var(--muted)}
+.heard .hv{font-family:var(--font-word);font-size:1.6rem;font-weight:700;line-height:1.3;overflow-wrap:anywhere}
+.heard .hs{font-size:.85rem;color:var(--muted);overflow-wrap:anywhere}
+#btnRec{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .hide{display:none!important}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -132,6 +140,11 @@ p.note{color:var(--muted);font-size:.88rem;margin:6px 0}
         <div class="status" id="status">กดปุ่ม “เริ่มอ่าน” แล้วอ่านคำนี้ออกเสียง</div>
       </div>
       <div class="meter" aria-hidden="true"><i id="lvl"></i></div>
+      <div class="heard hide" id="heard" aria-live="polite">
+        <div class="hl">ระบบได้ยินว่า</div>
+        <div class="hv" id="heardV"></div>
+        <div class="hs" id="heardS"></div>
+      </div>
       <div class="legend">
         <span style="--c:var(--ref)">เส้นแม่แบบ (เป้าหมาย)</span>
         <span style="--c:var(--ok)">อ่านตรง</span>
@@ -220,7 +233,14 @@ p.note{color:var(--muted);font-size:.88rem;margin:6px 0}
         <label class="f" for="sTol">เกณฑ์ความตรง (เซมิโทน)<input type="number" id="sTol" min="1.5" max="6" step="0.5"></label>
       </div>
       <p class="note">เซมิโทนยิ่งน้อยยิ่งเข้มงวด ค่าแนะนำสำหรับเด็ก ป.1 คือ 3</p>
-      <label style="display:flex;gap:8px;align-items:center;margin:10px 0"><input type="checkbox" id="sSR"> ตรวจคำด้วยระบบรู้จำเสียงพูดร่วมด้วย (ต้องต่ออินเทอร์เน็ต ใช้ได้เฉพาะบางเบราว์เซอร์)</label>
+      <h3>การจับเสียงพูด</h3>
+      <label style="display:flex;gap:8px;align-items:center;margin:10px 0"><input type="checkbox" id="sHold"> โหมดกดค้างเพื่อพูด (กดปุ่มค้างไว้ตอนพูด ปล่อยเมื่อพูดเสร็จ เหมาะกับเด็ก ป.1)</label>
+      <div class="row">
+        <label class="f" for="sSil">รอเงียบกี่วินาทีก่อนตัดเสียง (โหมดอัตโนมัติ)<input type="number" id="sSil" min="1" max="4" step="0.5"></label>
+      </div>
+      <p class="note">ค่าแนะนำ 1.5–2 วินาที ถ้าเด็กยังพูดไม่ทันแล้วระบบหยุด ให้เพิ่มค่านี้หรือใช้โหมดกดค้าง</p>
+      <label style="display:flex;gap:8px;align-items:center;margin:10px 0"><input type="checkbox" id="sSR"> ตรวจคำด้วยระบบรู้จำเสียงพูด (ภาษาไทย th-TH) และแสดงข้อความที่ระบบได้ยิน (ต้องต่ออินเทอร์เน็ต ใช้ได้เฉพาะ Chrome/Edge และบางเครื่อง)</label>
+      <p class="note">ระบบรู้จำเสียงช่วยเพิ่มคะแนนเมื่อฟังตรงกับคำ แต่ถ้าฟังไม่ตรงจะหักคะแนนเพียงเล็กน้อย เพราะเสียงเด็กมักถูกถอดความคลาดเคลื่อน</p>
       <label style="display:flex;gap:8px;align-items:center;margin:10px 0"><input type="checkbox" id="sTeacher"> โหมดครู: บันทึกเสียงอ่านเป็นต้นแบบของคำ (ไม่ให้คะแนน)</label>
       <button class="btn sm" id="clearModel">ล้างต้นแบบของคำนี้</button>
     </div>
@@ -320,10 +340,10 @@ function parseWords(text){
 
 /* ===================== สถานะ/เก็บข้อมูล ===================== */
 const KEY='thaiReader.v1';
-let DB = {students:[], records:[], models:{}, custom:[], settings:{weeks:20,pass:70,tol:3,sr:false,teacher:false,start:''}, cur:null};
+let DB = {students:[], records:[], models:{}, custom:[], settings:{weeks:20,pass:70,tol:3,sr:false,teacher:false,start:'',silence:1.5,hold:false}, cur:null};
 let mem=null;
 function load(){
-  try{ const s=localStorage.getItem(KEY); if(s){ const d=JSON.parse(s); DB=Object.assign(DB,d); DB.settings=Object.assign({weeks:20,pass:70,tol:3,sr:false,teacher:false,start:''},d.settings||{}); } }catch(e){ if(mem) DB=mem; }
+  try{ const s=localStorage.getItem(KEY); if(s){ const d=JSON.parse(s); DB=Object.assign(DB,d); DB.settings=Object.assign({weeks:20,pass:70,tol:3,sr:false,teacher:false,start:'',silence:1.5,hold:false},d.settings||{}); } }catch(e){ if(mem) DB=mem; }
 }
 function save(){ mem=DB; try{ localStorage.setItem(KEY,JSON.stringify(DB)); }catch(e){} }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
@@ -505,19 +525,24 @@ async function ensureMic(){
 function showErr(m){ $('#errbox').innerHTML='<div class="err"></div>'; $('#errbox').firstChild.textContent=m; }
 function clearErr(){ $('#errbox').innerHTML=''; }
 
-const R={state:'idle',frames:[],gate:0.012,noise:[],t0:0,onset:null,lastVoice:0,voiceRun:0,raf:0,sr:null,srText:'',word:null};
+const R={state:'idle',frames:[],gate:0.012,noise:[],t0:0,onset:null,lastVoice:0,lastSound:0,voiceRun:0,raf:0,sr:null,srWant:false,srAlts:[],srInterim:'',srErr:'',srRestarts:0,srEndP:null,srEndRes:null,word:null,holding:false,starting:false};
 const view={ref:null,live:[],res:null,win:1.8};
 
 async function startRec(){
-  if(R.state!=='idle') return;
+  if(R.state!=='idle'||R.starting) return;
   clearErr();
   const word=cur(); if(!word) return;
-  if(!(await ensureMic())) return;
+  R.starting=true;
+  const ok=await ensureMic();
+  R.starting=false;
+  if(!ok) return;
+  // โหมดกดค้าง: ถ้าปล่อยปุ่มระหว่างรอขออนุญาตไมโครโฟน ให้ยกเลิก (กดใหม่อีกครั้ง)
+  if(DB.settings.hold && !R.holding){ setStatus('พร้อมแล้ว กดปุ่มค้างไว้แล้วพูดได้เลย'); return; }
   let ref; ref=refFor(word);
-  Object.assign(R,{state:'calib',frames:[],noise:[],t0:performance.now()/1000,onset:null,lastVoice:0,voiceRun:0,word,srText:''});
+  Object.assign(R,{state:'calib',frames:[],noise:[],t0:performance.now()/1000,onset:null,lastVoice:0,lastSound:0,voiceRun:0,word});
   Object.assign(view,{ref,live:[],res:null,win:1.8+0.7*(word.tones.length-1)});
   $('#result').classList.add('hide');
-  setBtn(true); setStatus('เตรียมไมโครโฟน…');
+  setBtn(true); setStatus(DB.settings.hold?'กดค้างไว้ รอสักครู่…':'เตรียมไมโครโฟน…');
   startSR();
   tick();
 }
@@ -537,36 +562,89 @@ function tick(){
   $('#lvl').style.width=Math.min(100,rms*600)+'%';
   if(R.state==='calib'){
     R.noise.push(rms);
-    if(t>0.5){ const nz=R.noise.length?median(R.noise):0.003; R.gate=Math.max(0.01,Math.min(0.06,nz*3)); R.state='listen'; setStatus('อ่านได้เลย! 🎤'); R.t0=now; }
+    if(t>(DB.settings.hold?0.25:0.5)){ const nz=R.noise.length?median(R.noise):0.003; R.gate=Math.max(0.01,Math.min(0.06,nz*3)); R.state='listen'; setStatus(DB.settings.hold?'พูดได้เลย! 🎤 ปล่อยปุ่มเมื่อพูดเสร็จ':'อ่านได้เลย! 🎤'); R.t0=now; }
     return;
   }
+  const hold=DB.settings.hold, sil=DB.settings.silence;
   const f0 = rms>R.gate ? yin(A.buf,A.ctx.sampleRate) : 0;
   R.frames.push({t:now,f0,rms});
+  if(rms>R.gate*0.7) R.lastSound=now;           // ยังมีเสียงอยู่ (แม้เบาจนจับระดับเสียงไม่ได้)
   if(f0>0){
     R.voiceRun++;
-    if(R.onset===null && R.voiceRun>=3){ R.onset=now; setStatus('กำลังฟัง…'); R.state='voice'; }
+    if(R.onset===null && R.voiceRun>=3){ R.onset=now; setStatus(hold?'กำลังฟัง… ปล่อยปุ่มเมื่อพูดเสร็จ':'กำลังฟัง…'); R.state='voice'; }
     R.lastVoice=now;
   } else if(rms<=R.gate) R.voiceRun=0;
   if(R.state==='voice'){
     view.live=R.frames.filter(f=>f.f0>0&&f.t>=R.onset-0.02).map(f=>({x:(f.t-R.onset)/view.win,st:12*Math.log2(f.f0/liveBase())}));
     draw();
-    const maxDur=1.2+1.0*R.word.tones.length;
-    if(now-R.lastVoice>0.7 || now-R.onset>maxDur+1.5) stopRec();
+    // โหมดอัตโนมัติ: หยุดเมื่อเงียบต่อเนื่องเกินเวลาที่ตั้งไว้ โหมดกดค้าง: หยุดเมื่อปล่อยปุ่ม
+    const quiet=now-Math.max(R.lastVoice,R.lastSound);
+    const maxDur=hold?20:3+1.5*R.word.tones.length+sil;
+    if((!hold && quiet>sil) || now-R.onset>maxDur) stopRec();
   } else if(R.state==='listen'){
-    if(t>7) stopRec();
+    if(t>(hold?20:10)) stopRec();
   }
 }
 function liveBase(){ const v=R.frames.filter(f=>f.f0>0).map(f=>Math.log2(f.f0)); return Math.pow(2,v.reduce((a,b)=>a+b,0)/v.length); }
 
 /* ---- ระบบรู้จำเสียงพูด (ไม่บังคับ) ---- */
-function startSR(){
-  R.sr=null; if(!DB.settings.sr||DB.settings.teacher) return;
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR) return;
-  try{ const r=new SR(); r.lang='th-TH'; r.interimResults=false; r.maxAlternatives=3; r.continuous=false;
-    r.onresult=e=>{ const alts=[]; for(const res of e.results) for(let i=0;i<res.length;i++) alts.push(res[i].transcript); R.srText=alts.join(' '); };
-    r.onerror=()=>{}; r.start(); R.sr=r; }catch(e){ R.sr=null; }
+const SR_MSG={'not-allowed':'ไม่ได้รับอนุญาตให้ใช้ระบบรู้จำเสียง','service-not-allowed':'เบราว์เซอร์นี้ไม่อนุญาตระบบรู้จำเสียง','network':'ต่ออินเทอร์เน็ตไม่ได้ ระบบรู้จำเสียงต้องใช้อินเทอร์เน็ต','audio-capture':'ระบบรู้จำเสียงใช้ไมโครโฟนไม่ได้','language-not-supported':'เครื่องนี้ไม่รองรับภาษาไทยในระบบรู้จำเสียง'};
+function showHeard(main,sub,state){
+  const h=$('#heard'); h.classList.toggle('hide',main===null);
+  if(main===null) return;
+  h.dataset.state=state||'';
+  $('#heardV').textContent=main; $('#heardS').textContent=sub||'';
 }
-function stopSR(){ try{ R.sr&&R.sr.stop(); }catch(e){} }
+function startSR(){
+  R.sr=null; R.srWant=false; R.srAlts=[]; R.srInterim=''; R.srErr=''; R.srRestarts=0;
+  R.srEndP=Promise.resolve();
+  showHeard(null);
+  if(!DB.settings.sr||DB.settings.teacher) return;
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ showHeard('ระบบรู้จำเสียงใช้ไม่ได้ในเบราว์เซอร์นี้','ใช้ Chrome บน Android หรือคอมพิวเตอร์ ระบบจะให้คะแนนจากเส้นเสียงอย่างเดียว','none'); return; }
+  try{
+    const r=new SR();
+    r.lang='th-TH'; r.continuous=true; r.interimResults=true; r.maxAlternatives=5;   // ฟังต่อเนื่อง ไม่ตัดเร็ว และเก็บหลายคำตอบที่เป็นไปได้
+    R.srEndP=new Promise(res=>{R.srEndRes=res;});
+    r.onresult=e=>{
+      let interim='';
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        const res=e.results[i];
+        if(res.isFinal){ for(let j=0;j<res.length;j++) R.srAlts.push({t:res[j].transcript.trim(),c:res[j].confidence||0}); }
+        else interim+=res[0].transcript;
+      }
+      R.srInterim=interim.trim();
+      const shown=R.srInterim||(R.srAlts.length?R.srAlts[R.srAlts.length-1].t:'');
+      showHeard(shown||'…','กำลังฟัง','live');
+    };
+    r.onerror=e=>{ if(e.error&&e.error!=='no-speech'&&e.error!=='aborted'){ R.srErr=SR_MSG[e.error]||('ระบบรู้จำเสียงผิดพลาด ('+e.error+')'); R.srWant=false; } };
+    r.onend=()=>{
+      if(R.srWant && R.srRestarts<8){ R.srRestarts++; try{ r.start(); return; }catch(_){} }   // Chrome ตัดเองเมื่อเงียบ ให้เริ่มฟังต่อ
+      R.srEndRes&&R.srEndRes();
+    };
+    R.sr=r; R.srWant=true; r.start();
+    showHeard('…','รอฟังเสียง','live');
+  }catch(e){ R.sr=null; showHeard('เริ่มระบบรู้จำเสียงไม่ได้','',''); }
+}
+function stopSR(){ R.srWant=false; try{ R.sr&&R.sr.stop(); }catch(e){} }
+// ตัดวรรณยุกต์/เครื่องหมาย และแปลงตัวเลขที่ระบบมักพิมพ์เป็นเลข ให้กลับเป็นคำไทย
+const NUMW={'0':'ศูนย์','1':'หนึ่ง','2':'สอง','3':'สาม','4':'สี่','5':'ห้า','6':'หก','7':'เจ็ด','8':'แปด','9':'เก้า','10':'สิบ','100':'ร้อย','1000':'พัน','10000':'หมื่น'};
+function normTh(s){
+  s=(s||'').replace(/[๐-๙]/g,d=>String(d.charCodeAt(0)-0x0E50));
+  s=s.replace(/\d+/g,m=>NUMW[m]||m);
+  return s.replace(/[\s.,!?'"“”‘’\-ๆ]/g,'').replace(/[่-์]/g,'');
+}
+function matchHeard(word){
+  if(!R.srAlts.length) return null;
+  const w=normTh(word); let best=0,bestT='';
+  for(const a of R.srAlts){
+    const t=normTh(a.t); if(!t) continue;
+    let sc=0;
+    if(t.includes(w)) sc=100; else sc=similarity(t,w);
+    if(sc>best||!bestT){ best=sc; bestT=a.t; }
+  }
+  return {score:best,text:bestT};
+}
 
 /* ---- ประมวลผลทันทีเมื่ออ่านจบ ---- */
 async function finish(){
@@ -586,9 +664,19 @@ async function finish(){
   setStatus('ประมวลผลแล้ว');
   let final=sc.s, rec=null;
   if(DB.settings.sr && R.sr){
-    await new Promise(r=>setTimeout(r,1300));
-    rec=R.srText?similarity(R.srText,word.w):null;
-    if(rec!==null){ final=Math.round(0.7*sc.s+0.3*rec); showResult(final,rec,null,true); }
+    showHeard(R.srInterim||(R.srAlts.length?R.srAlts[R.srAlts.length-1].t:'…'),'กำลังประมวลผลคำที่ได้ยิน…','live');
+    await Promise.race([R.srEndP,new Promise(r=>setTimeout(r,3500))]);   // รอผลสุดท้ายของระบบรู้จำเสียงได้นานขึ้น
+    const m=matchHeard(word.w);
+    if(m){
+      rec=m.score;
+      // คำที่ได้ยินช่วยเพิ่มคะแนนได้ แต่ไม่ทำให้คนที่เส้นเสียงถูกต้องตกเกณฑ์ เพราะระบบรู้จำเสียงเด็กยังผิดพลาดได้
+      final = rec>=80 ? Math.max(sc.s,Math.round(0.7*sc.s+30)) : Math.round(0.85*sc.s+0.15*rec);
+      const alts=[...new Set(R.srAlts.map(a=>a.t).filter(Boolean))].slice(0,4).join(' / ');
+      showHeard(m.text||'(ไม่มีข้อความ)', (rec>=80?'ตรงกับคำ “'+word.w+'” ✓':'ไม่ตรงกับคำ “'+word.w+'” (ระบบอาจฟังเสียงเด็กคลาดเคลื่อน ดูเส้นเสียงประกอบ)')+(alts?'  ·  ที่ได้ยินทั้งหมด: '+alts:''), rec>=80?'ok':'bad');
+      showResult(final,rec,null,true);
+    } else {
+      showHeard('ไม่ได้ยินเสียงพูดที่จับเป็นคำได้', R.srErr||'ลองพูดให้ดังและชัดขึ้น หรือกดค้างเพื่อพูด คะแนนนี้ใช้เส้นเสียงอย่างเดียว','none');
+    }
   }
   saveRecord(word,final,sc.s,rec);
 }
@@ -653,7 +741,7 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let sel={week:1,group:'all',word:null};
 function cur(){ return WORD_BY[sel.word]||null; }
 function setStatus(t){ $('#status').textContent=t; }
-function setBtn(rec){ const b=$('#btnRec'); b.textContent=rec?'⏹ หยุด':'🎤 เริ่มอ่าน'; b.classList.toggle('rec',rec); b.classList.toggle('primary',!rec); }
+function setBtn(rec){ const b=$('#btnRec'); const h=DB.settings.hold; b.textContent=rec?(h?'🎤 ปล่อยเมื่อพูดเสร็จ':'⏹ หยุด'):(h?'🎤 กดค้างแล้วพูด':'🎤 เริ่มอ่าน'); b.classList.toggle('rec',rec); b.classList.toggle('primary',!rec); }
 function wordsInView(){ return WORDS.filter(w=>w.week===sel.week && (sel.group==='all'||w.group===sel.group)); }
 function bestOf(sid,w){ let b=null,n=0; for(const r of DB.records){ if(r.sid===sid&&r.w===w){ n++; if(b===null||r.s>b) b=r.s; } } return {best:b,n}; }
 
@@ -751,12 +839,12 @@ function renderScores(){
 }
 function renderSettings(){
   const s=DB.settings;
-  $('#sStart').value=s.start||''; $('#sWeeks').value=s.weeks; $('#sPass').value=s.pass; $('#sTol').value=s.tol; $('#sSR').checked=s.sr; $('#sTeacher').checked=s.teacher;
+  $('#sStart').value=s.start||''; $('#sWeeks').value=s.weeks; $('#sPass').value=s.pass; $('#sTol').value=s.tol; $('#sSR').checked=s.sr; $('#sHold').checked=s.hold; $('#sSil').value=s.silence; $('#sTeacher').checked=s.teacher;
   const gi=$('#grpInfo'); gi.innerHTML='';
   for(const g of GROUPS){ const n=WORDS.filter(w=>w.group===g.id).length; const d=document.createElement('div'); d.className='grp'; d.innerHTML='<div><b></b> <span class="chip"></span><p class="note" style="margin:2px 0 0"></p></div>'; const q=d.firstChild; q.children[0].textContent=g.name; q.children[1].textContent=n+' คำ'; q.children[2].textContent=g.why; gi.appendChild(d); }
   $('#wordCount').textContent=`ตอนนี้มี ${WORDS.length} คำ (คำที่เพิ่มเอง ${DB.custom.length} คำ) แบ่งเป็น ${s.weeks} สัปดาห์ สัปดาห์ละประมาณ ${Math.round(WORDS.length/s.weeks)} คำ`;
 }
-function renderAll(){ buildWords(); renderStudents(); renderSelectors(); renderWords(); renderScores(); renderSettings(); }
+function renderAll(){ buildWords(); renderStudents(); renderSelectors(); renderWords(); renderScores(); renderSettings(); setBtn(R.state!=='idle'); }
 
 /* ---- เหตุการณ์ ---- */
 $$('nav.tabs button').forEach(b=>b.onclick=()=>{
@@ -766,7 +854,22 @@ $$('nav.tabs button').forEach(b=>b.onclick=()=>{
 $('#stuSel').onchange=e=>{ DB.cur=e.target.value; save(); renderWords(); renderScores(); };
 $('#weekSel').onchange=e=>{ sel.week=+e.target.value; renderWords(); };
 $('#grpSel').onchange=e=>{ sel.group=e.target.value; renderWords(); };
-$('#btnRec').onclick=()=>{ R.state==='idle'?startRec():stopRec(true); };
+const rb=$('#btnRec');
+rb.addEventListener('pointerdown',e=>{
+  if(!DB.settings.hold) return;
+  e.preventDefault(); R.holding=true; try{ rb.setPointerCapture(e.pointerId); }catch(_){}
+  if(R.state==='idle') startRec();
+});
+['pointerup','pointercancel'].forEach(ev=>rb.addEventListener(ev,()=>{
+  if(!DB.settings.hold) return;
+  R.holding=false; if(R.state!=='idle') stopRec(true);
+}));
+rb.addEventListener('contextmenu',e=>e.preventDefault());
+rb.onclick=e=>{
+  if(DB.settings.hold){ if(e.detail>0) return;           // เมาส์/นิ้ว จัดการด้วยการกดค้างแล้ว คีย์บอร์ดใช้สลับเริ่ม/หยุด
+    R.holding=true; }
+  R.state==='idle'?startRec():stopRec(true);
+};
 function step(d){ if(R.state!=='idle') return; const l=wordsInView(); const i=l.findIndex(w=>w.w===sel.word); const n=l[(i+d+l.length)%l.length]; if(n){ sel.word=n.w; renderWords(); renderStage(); } }
 $('#btnNext').onclick=()=>step(1); $('#btnPrev').onclick=()=>step(-1);
 $('#btnListen').onclick=()=>{
@@ -781,6 +884,8 @@ $('#sWeeks').onchange=e=>{ DB.settings.weeks=Math.max(4,Math.min(40,+e.target.va
 $('#sPass').onchange=e=>{ DB.settings.pass=+e.target.value||70; save(); renderAll(); };
 $('#sTol').onchange=e=>{ DB.settings.tol=+e.target.value||3; save(); renderStage(); };
 $('#sSR').onchange=e=>{ DB.settings.sr=e.target.checked; save(); };
+$('#sHold').onchange=e=>{ DB.settings.hold=e.target.checked; save(); setBtn(false); };
+$('#sSil').onchange=e=>{ DB.settings.silence=Math.max(1,Math.min(4,+e.target.value||1.5)); save(); };
 $('#sTeacher').onchange=e=>{ DB.settings.teacher=e.target.checked; save(); };
 $('#clearModel').onclick=()=>{ const w=cur(); if(w){ delete DB.models[w.w]; save(); renderStage(); } };
 $('#impBtn').onclick=()=>{
